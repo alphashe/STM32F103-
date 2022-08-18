@@ -64,7 +64,6 @@ int main()
 	{
 		if(USART1_RX_STA&0x8000)
 		{					   
-			ds1302_write_time();
 			HAL_UART_Transmit(&UART1_Handler,ack,4,1000);//发送ms数组
 			USART1_RX_STA=0;
 		}
