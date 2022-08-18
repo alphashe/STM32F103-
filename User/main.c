@@ -3,34 +3,24 @@
 #include "usart.h"
 #include "led.h"
 #include "DS1302.h"
+#include "HCSR.h"
 #include "stm32f1xx_hal.h"
 
 	uint32_t alpha=0; 
-	unsigned char ms[4]={0,0,'\r', '\n'};
+	unsigned char ms[5]={0, 0, 0, '\r', '\n'};
+	unsigned char ack[4]={'O', 'K', '\r', '\n'};
 	uint32_t alphashe = 0;
+	char hcflag=0;
+	char pastflag=0;
 /*******************************************************************************
-UartÅäÖÃ£ºPA9£ºTXD£¬PA10£ºRXD
-DS1302ÅäÖÃ£º
+Uarté…ç½®ï¼šPA9ï¼šTXDï¼ŒPA10ï¼šRXD
+DS1302é…ç½®ï¼š
 *******************************************************************************/
-int main()
+void SendTimetoPC(void)	//å°†æ¯«ç§’å¢è‡³3ä½æ•°
 {
-
-	HAL_Init();                     //³õÊ¼»¯HAL¿â 
-	SystemClock_Init(RCC_PLL_MUL9); //ÉèÖÃÊ±ÖÓ,72M
-	SysTick_Init(72);
-	USART1_Init(9600);
-	LED_Init();
-	ds1302_init();
-	
-	while(1)
-	{
-		if(USART1_RX_STA&0x8000)
-		{					   
-//			len=USART1_RX_STA&0x3fff;//µÃµ½´Ë´Î½ÓÊÕµ½µÄÊı¾İ³¤¶È
-//			HAL_UART_Transmit(&UART1_Handler,(uint8_t*)USART1_RX_BUF,len,1000);	//·¢ËÍ½ÓÊÕµ½µÄÊı¾İ
-//			while(__HAL_UART_GET_FLAG(&UART1_Handler,UART_FLAG_TC)!=SET);		//µÈ´ı·¢ËÍ½áÊø
 			ds1302_read_time();
 			alpha= HAL_GetTick();//uS -> mS i (int)
+			ms[2] = alpha%10+'0';
 			ms[1] = ((alpha %100) / 10) + '0';
 			ms[0] = (alpha/100) + '0';
 			if(ms[0] >(9 +'0'))
@@ -38,14 +28,58 @@ int main()
 				ms[0] = 9+'0';
 			}
 			ds1302_send_time();
-			HAL_UART_Transmit(&UART1_Handler,ms,4,1000);//·¢ËÍmsÊı×é
+			HAL_UART_Transmit(&UART1_Handler,ms,5,1000);//å‘é€msæ•°ç»„
+}
+int HCSR_TRG(void)
+{
+	if(hcsr_cd ==0)
+		{
+			TRIG = 1;
+			delay_us(13);
+			TRIG = 0;
+			while(!ECHO);
+			HAL_Delay(1);
+			if(ECHO)
+				hcflag=0;	//34cmå†…æ²¡æœ‰ä¸œè¥¿
+			else
+			{
+				hcflag=1;	//34cmå†…æœ‰ä¸œè¥¿
+			}
+			hcsr_cd = 60;
+		}
+		return hcflag;
+}
+int main()
+{
+
+	HAL_Init();                     //åˆå§‹åŒ–HALåº“ 
+	SystemClock_Init(RCC_PLL_MUL9); //è®¾ç½®æ—¶é’Ÿ,72M
+	SysTick_Init(72);
+	USART1_Init(9600);
+	LED_Init();
+	ds1302_init();
+	HC_SRInit();
+	TRIG  =0;
+	while(1)
+	{
+		if(USART1_RX_STA&0x8000)
+		{					   
+			ds1302_write_time();
+			HAL_UART_Transmit(&UART1_Handler,ack,4,1000);//å‘é€msæ•°ç»„
 			USART1_RX_STA=0;
 		}
+		if(HCSR_TRG()&&(pastflag==0))	//é˜²æ­¢æ£€æµ‹åˆ°ç‰©ä½“æ—¶ï¼ŒæŒç»­å‘é€æ—¶é—´
+		{
+			SendTimetoPC();
+			pastflag = 1;
+		}
+		pastflag = HCSR_TRG();
 		ds1302_read_time();
 		if(sec_flag == 1)
 		{
 			sec_flag = 0;
 			HAL_WriteTick(0);
 		}
+		
 	}
 }
